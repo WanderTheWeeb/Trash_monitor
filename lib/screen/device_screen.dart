@@ -16,16 +16,22 @@ class DeviceScreen extends StatefulWidget {
 
 class _DeviceScreenState extends State<DeviceScreen> {
   StreamSubscription? _readSubscription;
-  final List<String> _receivedInput = [];
+  int? _lastPercentage;
 
   @override
   void initState() {
+    super.initState();
     _readSubscription = widget.connection.input?.listen((event) {
-      if (mounted) {
-        setState(() => _receivedInput.add(utf8.decode(event)));
+      try {
+        final input = utf8.decode(event).trim();
+        final percentage = int.tryParse(input);
+        if (percentage != null && mounted) {
+          setState(() => _lastPercentage = percentage);
+        }
+      } catch (e) {
+        if (kDebugMode) print("Error decoding input: $e");
       }
     });
-    super.initState();
   }
 
   @override
@@ -35,39 +41,52 @@ class _DeviceScreenState extends State<DeviceScreen> {
     super.dispose();
   }
 
+  String getStatusText(int percent) {
+    if (percent >= 70) return "Estado: Lleno";
+    if (percent >= 35) return "Estado: Casi lleno";
+    return "Estado: Vacío";
+  }
+
+  String getImagePath(int percent) {
+    if (percent >= 70) return 'assets/full.png';
+    if (percent >= 35) return 'assets/almost_full.png';
+    return 'assets/empty.png';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final int? percent = _lastPercentage;
+
     return Scaffold(
-      appBar: AppBar(title: Text("Connection to ${widget.connection.address}")),
-      body: ListView(
-        children: [
-          ElevatedButton(
-            onPressed: () {
-              try {
-                widget.connection.writeString("hello world");
-              } catch (e) {
-                if (kDebugMode) print(e);
-                ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      "Error sending to device. Device is ${widget.connection.isConnected ? "connected" : "not connected"}",
+      appBar: AppBar(title: Text("Conectado a ${widget.connection.address}")),
+      body: Center(
+        child:
+            percent == null
+                ? const Text("Esperando datos del dispositivo...")
+                : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      getImagePath(percent),
+                      width: 150,
+                      height: 150,
+                      fit: BoxFit.contain,
                     ),
-                  ),
-                );
-              }
-            },
-            child: const Text("Send hello world to remote device"),
-          ),
-          const Divider(),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              "Received data",
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-          ),
-          for (String input in _receivedInput) Text(input),
-        ],
+                    const SizedBox(height: 16),
+                    Text(
+                      "$percent%",
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      getStatusText(percent),
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                  ],
+                ),
       ),
     );
   }
