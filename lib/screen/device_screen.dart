@@ -1,43 +1,66 @@
 import 'dart:async';
 import 'dart:convert';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_classic/flutter_blue_classic.dart';
+import 'package:trash_monitor/screen/service/mqtt_service.dart';
 
 class DeviceScreen extends StatefulWidget {
-  const DeviceScreen({super.key, required this.connection});
-
-  final BluetoothConnection connection;
+  const DeviceScreen({super.key});
 
   @override
   State<DeviceScreen> createState() => _DeviceScreenState();
 }
 
 class _DeviceScreenState extends State<DeviceScreen> {
-  StreamSubscription? _readSubscription;
+  late MqttService _mqttService;
+  StreamSubscription<String>? _mqttSubscription;
   int? _lastPercentage;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
-    _readSubscription = widget.connection.input?.listen((event) {
-      try {
-        final input = utf8.decode(event).trim();
-        final percentage = int.tryParse(input);
-        if (percentage != null && mounted) {
-          setState(() => _lastPercentage = percentage);
+    _setupMqtt();
+  }
+
+  Future<void> _setupMqtt() async {
+    _mqttService = MqttService(
+      server: '0e64cd1612f14fb3b01dc31c444586de.s1.eu.hivemq.cloud',
+      port: 8883,
+      clientId: 'trash_monitor_app',
+      topic: 'esp32/datos',
+    );
+
+    try {
+      await _mqttService.connect();
+      _mqttSubscription = _mqttService.messages.listen((payload) {
+        try {
+          final jsonData = jsonDecode(payload);
+          final int? receivedValue = jsonData['almacenamiento']?.toInt();
+          if (receivedValue != null) {
+            setState(() {
+              _lastPercentage = receivedValue;
+              _errorMessage = null;
+            });
+          }
+        } catch (e) {
+          print("Error al procesar el mensaje MQTT: $e");
+          setState(() {
+            _errorMessage = "Error al procesar los datos.";
+          });
         }
-      } catch (e) {
-        if (kDebugMode) print("Error decoding input: $e");
-      }
-    });
+      });
+    } catch (e) {
+      print('Error connecting to MQTT: $e');
+      setState(() {
+        _errorMessage = "Error al conectar con el servidor MQTT.";
+      });
+    }
   }
 
   @override
   void dispose() {
-    widget.connection.dispose();
-    _readSubscription?.cancel();
+    _mqttSubscription?.cancel();
+    _mqttService.disconnect();
     super.dispose();
   }
 
@@ -58,10 +81,12 @@ class _DeviceScreenState extends State<DeviceScreen> {
     final int? percent = _lastPercentage;
 
     return Scaffold(
-      appBar: AppBar(title: Text("Conectado a ${widget.connection.address}")),
+      appBar: AppBar(title: const Text("Monitor de basurero")),
       body: Center(
         child:
-            percent == null
+            _errorMessage != null
+                ? Text(_errorMessage!, style: TextStyle(color: Colors.red))
+                : percent == null
                 ? const Text("Esperando datos del dispositivo...")
                 : Column(
                   mainAxisAlignment: MainAxisAlignment.center,

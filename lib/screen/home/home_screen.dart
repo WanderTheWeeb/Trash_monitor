@@ -121,11 +121,7 @@ class _MainScreenState extends State<MainScreen> {
                       if (mounted) setState(() => _connectingToIndex = null);
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder:
-                              (context) =>
-                                  DeviceScreen(connection: connection!),
-                        ),
+                        MaterialPageRoute(builder: (context) => DeviceScreen()),
                       );
                     }
                   } catch (e) {
